@@ -13,7 +13,7 @@ class CreateAccountViewController: UIViewController {
   
   @IBOutlet private weak var createAccountButton: UIButton!
   @IBOutlet private weak var emailTextField: UITextField!
-  @IBOutlet private weak var passwordTextField: UILabel!
+  @IBOutlet private weak var passwordTextField: UITextField!
   @IBOutlet private weak var processingView: UIView!
   @IBOutlet private weak var activityIndicatorView: UIActivityIndicatorView!
   

@@ -15,7 +15,7 @@
                 <outlet property="activityIndicatorView" destination="94Y-YM-jjM" id="l9s-oq-KU7"/>
                 <outlet property="createAccountButton" destination="Zph-rO-SD5" id="NQb-OG-WLa"/>
                 <outlet property="emailTextField" destination="qGh-aL-29K" id="0RN-r5-Fpm"/>
-                <outlet property="passwordTextField" destination="1Ts-lR-eXc" id="QmW-b9-j4G"/>
+                <outlet property="passwordTextField" destination="dOx-6e-tIn" id="X4E-en-7p5"/>
                 <outlet property="processingView" destination="vgf-BN-bYx" id="0eQ-W9-f7b"/>
                 <outlet property="view" destination="iN0-l3-epB" id="PS4-aw-2xf"/>
             </connections>
