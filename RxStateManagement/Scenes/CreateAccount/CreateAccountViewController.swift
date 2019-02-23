@@ -3,12 +3,10 @@ import RxCocoa
 import RxSwift
 
 class CreateAccountViewController: UIViewController {
-  // 2. Create UIEvent
   enum UIEvent {
     case submitEvent(email: String, password: String)
   }
   
-  // 3. Create UIModel
   enum UIModel: Equatable {
     case inProgress
     case success
@@ -31,23 +29,31 @@ class CreateAccountViewController: UIViewController {
   override func viewDidLoad() {
     super.viewDidLoad()
     
-    // 5. Manage state using UIEvent and UIModel
-    createAccountButton
-      .rx
-      .tap
-      .map({ UIEvent.submitEvent(email: self.emailTextField.text!,
-                                 password: self.passwordTextField.text!)})
+    //1. Extract events observable stream
+    let events = createAccountButton.rx.tap
+      .map({
+        UIEvent.submitEvent(
+          email: self.emailTextField.text!,
+          password: self.passwordTextField.text!
+        )
+      })
+    
+    //2. Extract models observable stream
+    let models = events
       .flatMap { (event) -> Observable<UIModel> in
         switch event {
         case .submitEvent(email: let email, password: let password):
-            return self.userService.createUser(email: email,
-                                               password: password)
-              .map({ _ in UIModel.success })
-              .catchError({ error in Observable.just(UIModel.error(message: error.localizedDescription))})
-              .observeOn(MainScheduler.instance)
-              .startWith(UIModel.inProgress)
+          return self.userService.createUser(email: email,
+                                             password: password)
+            .map({ _ in UIModel.success })
+            .catchError({ error in Observable.just(UIModel.error(message: error.localizedDescription))})
+            .observeOn(MainScheduler.instance)
+            .startWith(UIModel.inProgress)
         }
-      }
+    }
+    
+    //3. Subscribe to combinded stream
+    models
       .subscribe(onNext: { (model) in
         switch model {
         case .inProgress:
@@ -69,7 +75,6 @@ class CreateAccountViewController: UIViewController {
       .disposed(by: disposeBag)
   }
   
-  // 4. Extract showError method
   func showError(_ message: String) {
     let alertController = UIAlertController(title: "Error", message: message, preferredStyle: .alert)
     alertController.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
