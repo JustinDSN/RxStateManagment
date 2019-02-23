@@ -2,7 +2,10 @@ import UIKit
 import RxCocoa
 import RxSwift
 
+
 class CreateAccountViewController: UIViewController {
+  //ZZZJDS - Left off here: https://speakerdeck.com/jakewharton/the-state-of-managing-state-with-rxjava-devoxx-us-2017?slide=161
+  ///Should refactor to classes?
   enum UIEvent {
     case submitEvent(email: String, password: String)
   }
