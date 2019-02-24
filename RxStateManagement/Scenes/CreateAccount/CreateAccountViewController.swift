@@ -8,6 +8,23 @@ class CreateAccountViewController: UIViewController {
   ///Should refactor to classes?
   enum UIEvent {
     case submitEvent(email: String, password: String)
+    case checkEmailEvent(email: String)
+    
+    var isSubmitEvent: Bool {
+      if case .submitEvent = self {
+        return true
+      } else {
+        return false
+      }
+    }
+    
+    var isCheckEmailEvent: Bool {
+      if case .checkEmailEvent = self {
+        return true
+      } else {
+        return false
+      }
+    }
   }
   
   enum UIModel: Equatable {
@@ -42,7 +59,8 @@ class CreateAccountViewController: UIViewController {
       })
     
     //2. Extract models observable stream
-    let models = events
+    let submit = events
+      .filter { $0.isSubmitEvent }
       .flatMap { (event) -> Observable<UIModel> in
         switch event {
         case .submitEvent(email: let email, password: let password):
@@ -52,6 +70,8 @@ class CreateAccountViewController: UIViewController {
             .catchError({ error in Observable.just(UIModel.error(message: error.localizedDescription))})
             .observeOn(MainScheduler.instance)
             .startWith(UIModel.inProgress)
+        default:
+          fatalError("Only `.submitEvent` should be handled by this observable sequence.")
         }
     }
     
