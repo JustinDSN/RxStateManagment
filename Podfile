@@ -7,6 +7,7 @@ target 'RxStateManagement' do
 
   pod 'RxSwift'
   pod 'RxCocoa'
+  pod 'RxSwiftExt'
 
   # Pods for RxStateManagement
 

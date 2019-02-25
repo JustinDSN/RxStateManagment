@@ -15,4 +15,8 @@ class UserService {
       return Observable.just(User(email: email, password: password)).delay(5.0, scheduler: UserService.UserServiceScheduler)
     }
   }
+  
+  func checkEmail(email: String) -> Observable<Bool> {
+    return Observable.just(true)
+  }
 }

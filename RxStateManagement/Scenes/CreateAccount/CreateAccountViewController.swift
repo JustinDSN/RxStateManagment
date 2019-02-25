@@ -1,11 +1,10 @@
 import UIKit
 import RxCocoa
 import RxSwift
-
+import RxSwiftExt
 
 class CreateAccountViewController: UIViewController {
-  //ZZZJDS - Left off here: https://speakerdeck.com/jakewharton/the-state-of-managing-state-with-rxjava-devoxx-us-2017?slide=161
-  ///Should refactor to classes?
+  // 1. Add checkEmailEvent, with helper properties for filtering.
   enum UIEvent {
     case submitEvent(email: String, password: String)
     case checkEmailEvent(email: String)
@@ -49,8 +48,8 @@ class CreateAccountViewController: UIViewController {
   override func viewDidLoad() {
     super.viewDidLoad()
     
-    //1. Extract events observable stream
-    let events = createAccountButton.rx.tap
+    // 2. Extract discrete UIEvents (submitEvent & checkEmailEvent)
+    let submitEvent = createAccountButton.rx.tap
       .map({
         UIEvent.submitEvent(
           email: self.emailTextField.text!,
@@ -58,7 +57,15 @@ class CreateAccountViewController: UIViewController {
         )
       })
     
-    //2. Extract models observable stream
+    let checkEmailEvent = emailTextField.rx.text
+      .unwrap()
+      .map({
+        UIEvent.checkEmailEvent(email: $0)
+      })
+    
+    let events = Observable.merge(submitEvent, checkEmailEvent)
+    
+    // 3. Handle UIEvents discretely (submit, checkEmail)
     let submit = events
       .filter { $0.isSubmitEvent }
       .flatMap { (event) -> Observable<UIModel> in
@@ -75,7 +82,26 @@ class CreateAccountViewController: UIViewController {
         }
     }
     
-    //3. Subscribe to combinded stream
+    let checkEmail = events
+      .filter { $0.isCheckEmailEvent }
+      .delay(0.2, scheduler: MainScheduler.instance)
+      .flatMapLatest { (event) -> Observable<UIModel> in
+        switch event {
+        case .checkEmailEvent(email: let email):
+          //TODO: Handle UIModels Correctly
+          return self.userService.checkEmail(email: email)
+            .map({ _ in UIModel.success })
+            .catchError({ error in Observable.just(UIModel.error(message: error.localizedDescription))})
+            .observeOn(MainScheduler.instance)
+            .startWith(UIModel.inProgress)
+        default:
+          fatalError("Only `.checkEmailEvent` should be handled by this observable sequence.")
+        }
+    }
+    
+    let models = Observable.merge(submit, checkEmail)
+    
+    // 4. Subscribe to UIModel observable
     models
       .subscribe(onNext: { (model) in
         switch model {
