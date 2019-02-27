@@ -70,95 +70,64 @@ class CreateAccountViewController: UIViewController {
   override func viewDidLoad() {
     super.viewDidLoad()
     
-    let submitEvent = createAccountButton.rx.tap
+    let submitEvent: Observable<SubmitUIEvent> = createAccountButton.rx.tap
       .map({
         SubmitEvent(
           email: self.emailTextField.text!,
           password: self.passwordTextField.text!
-        ) as SubmitUIEvent
+        )
       })
     
-    let checkEmailEvent = emailTextField.rx.text
+    let checkEmailEvent: Observable<SubmitUIEvent> = emailTextField.rx.text
       .unwrap()
+      .filter({ !$0.isEmpty })
       .map({
-        CheckEmailEvent(email: $0) as SubmitUIEvent
+        CheckEmailEvent(email: $0)
       })
     
-    let events = Observable<SubmitUIEvent>.merge(submitEvent, checkEmailEvent)
+    //1. Merge all `SubmitUIEvent` into a single sequence
+    let uiEvents = Observable<SubmitUIEvent>.merge(submitEvent, checkEmailEvent)
     
-    let submit = events
-      .apply(submitUIEventTransformer)
-      .apply(submitActionTransformer)
+    //2. Transform `SubmitUIEvent`s into UI agnostic actions
+    let actions = uiEvents.apply(uiEventTransformer)
+
+    //3. Transform `Actions` into `Results`
+    let results = actions.apply(actionTransformer)
     
-    let checkEmail = events
-      .apply(checkEmailUIEventTransformer)
-      .apply(checkEmailActionTransformer)
-    
-    
-    
-    
-    
-    
-    //2. Blah
-    //    let results = Observable.of(
-    //      Result.checkEmailInFlight,
-    //      Result.checkEmailInFlight,
-    //      Result.submitEventInFlight,
-    //      Result.submitEventSuccess
-    //    )
-    
-    // 3. Use scan to manage state
-    //    let uiModels = results.scan(UIModel.idle) { (initialState, result) -> UIModel in
-    //      switch (result) {
-    //      case .checkEmailInFlight, .submitEventInFlight:
-    //        return .inProgress
-    //      case .checkEmailSuccess:
-    //        return .idle
-    //      case .submitEventSuccess:
-    //        return .success
-    //      }
-    //    }
-    
-    // 4. Decouple UIEvents and UIModels, by using Actions and mapping to Results
-    
-    let submit = events
-      .filter { $0.isSubmitEvent }
-      .flatMap { (event) -> Observable<UIModel> in
-        switch event {
-        case .submitEvent(email: let email, password: let password):
-          return self.userService.createUser(email: email,
-                                             password: password)
-            .map({ _ in UIModel.success })
-            .catchError({ error in Observable.just(UIModel.error(message: error.localizedDescription))})
-            .observeOn(MainScheduler.instance)
-            .startWith(UIModel.inProgress)
-        default:
-          fatalError("Only `.submitEvent` should be handled by this observable sequence.")
+    //4. Calculate the `UIModel` from the resulting sequence of `Results` (this is where the state management happens)
+    let uiModels = results.scan(UIModel.idle) { (initialState, result) -> UIModel in
+      switch result {
+      case let submitResult as SubmitResult:
+        switch submitResult {
+        case .inProgress:
+          return .inProgress
+        case .success:
+          return .success
+        case .error(message: let message):
+          return .error(message: message)
         }
+      case let checkEmailResult as CheckEmailResult:
+        switch checkEmailResult {
+        case .inProgress:
+          return .inProgress
+        case .success:
+          return .idle
+        case .error(message: let message):
+          return .error(message: message)
+        }
+      default:
+        fatalError("Unexpected result.")
+      }
     }
     
-    let checkEmail = events
-      .filter { $0.isCheckEmailEvent }
-      .delay(0.2, scheduler: MainScheduler.instance)
-      .flatMapLatest { (event) -> Observable<UIModel> in
-        switch event {
-        case .checkEmailEvent(email: let email):
-          //TODO: Handle UIModels Correctly
-          return self.userService.checkEmail(email: email)
-            .map({ _ in UIModel.success })
-            .catchError({ error in Observable.just(UIModel.error(message: error.localizedDescription))})
-            .observeOn(MainScheduler.instance)
-            .startWith(UIModel.inProgress)
-        default:
-          fatalError("Only `.checkEmailEvent` should be handled by this observable sequence.")
-        }
-    }
-    
-    let models = Observable.merge(submit, checkEmail)
-    
-    models
+    //5. Using the calculated state, bind it to the UI
+    uiModels
       .subscribe(onNext: { (model) in
         switch model {
+        case .idle:
+          print("Idle")
+          self.createAccountButton.isEnabled = true
+          self.processingView.isHidden = true
         case .inProgress:
           print("In Progress")
           self.createAccountButton.isEnabled = false
@@ -185,32 +154,40 @@ class CreateAccountViewController: UIViewController {
     self.present(alertController, animated: true, completion: nil)
   }
   
-  func submitUIEventTransformer(_ events: Observable<UIEvent>) -> Observable<SubmitAction> {
-    return events.filter({ $0.isSubmitEvent })
+  func uiEventTransformer(_ events: Observable<SubmitUIEvent>) -> Observable<Action> {
+    return events.multicast({ return PublishSubject<SubmitUIEvent>() }, selector: { (shared) -> Observable<Action> in
+        return Observable.merge(
+          shared.ofType(SubmitEvent.self).apply(self.submitUIEventTransformer),
+          shared.ofType(CheckEmailEvent.self).apply(self.checkEmailUIEventTransformer)
+        )
+    })
+  }
+  
+  func submitUIEventTransformer(_ events: Observable<SubmitEvent>) -> Observable<Action> {
+    return events
       .map({ event in
-        switch event {
-        case .submitEvent(email: let email, password: let password):
-          return SubmitAction(email: email, password: password)
-        default:
-          fatalError("Only `.submitEvent` should be handled by this observable sequence.")
-        }
+        return SubmitAction(email: event.email, password: event.password)
       })
   }
   
-  func checkEmailUIEventTransformer(_ events: Observable<UIEvent>) -> Observable<CheckEmailAction> {
-    return events.filter({ $0.isCheckEmailEvent})
+  func checkEmailUIEventTransformer(_ events: Observable<CheckEmailEvent>) -> Observable<Action> {
+    return events
       .map({ event in
-        switch event {
-        case .checkEmailEvent(email: let email):
-          return CheckEmailAction(email: email)
-        default:
-          fatalError("Only `.checkEmailEvent` should be handled by this observable sequence.")
-        }
+        return CheckEmailAction(email: event.email)
       })
   }
   
-  func submitActionTransformer(_ actions: Observable<SubmitAction>) -> Observable<SubmitResult> {
-    return actions.flatMap({ (action) -> Observable<SubmitResult> in
+  func actionTransformer(_ actions: Observable<Action>) -> Observable<Result> {
+    return actions.multicast({ return PublishSubject<Action>() }, selector: { (shared) -> Observable<Result> in
+      return Observable.merge(
+        shared.ofType(SubmitAction.self).apply(self.submitActionTransformer),
+        shared.ofType(CheckEmailAction.self).apply(self.checkEmailActionTransformer)
+      )
+    })
+  }
+  
+  func submitActionTransformer(_ actions: Observable<SubmitAction>) -> Observable<Result> {
+    return actions.flatMap({ (action) -> Observable<Result> in
       return self.userService.createUser(email: action.email,
                                          password: action.password)
         .map({ _ in SubmitResult.success })
@@ -220,10 +197,10 @@ class CreateAccountViewController: UIViewController {
     })
   }
   
-  func checkEmailActionTransformer(_ actions: Observable<CheckEmailAction>) -> Observable<CheckEmailResult> {
+  func checkEmailActionTransformer(_ actions: Observable<CheckEmailAction>) -> Observable<Result> {
     return actions
       .delay(0.2, scheduler: MainScheduler.instance)
-      .flatMapLatest({ (action) -> Observable<CheckEmailResult> in
+      .flatMapLatest({ (action) -> Observable<Result> in
         return self.userService.checkEmail(email: action.email)
           .map({ _ in CheckEmailResult.success })
           .catchError({ error in Observable.just(CheckEmailResult.error(message: error.localizedDescription))})
@@ -231,6 +208,4 @@ class CreateAccountViewController: UIViewController {
           .startWith(CheckEmailResult.inProgress)
       })
   }
-  
 }
-
